@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from adapters.base import AdapterError
-from adapters.gh_aggregator import parse_readme
+from adapters.gh_aggregator import _job_key, parse_readme
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "readme_sample.md"
@@ -28,6 +28,23 @@ class GitHubAggregatorTests(unittest.TestCase):
 
     def test_leading_whitespace_before_pipe(self) -> None:
         self.assertEqual(self.jobs[1].role, "Customer Data Management and Analysis Intern")
+
+    def test_url_disambiguates_same_role_and_location(self) -> None:
+        first = _job_key(
+            "Ontario Teachers' Pension Plan",
+            "Capital Markets Intern, Quantitative Strategies and Research",
+            "Toronto, ON",
+            "https://example.test/job/7167",
+            "Aug 21, 2026",
+        )
+        second = _job_key(
+            "Ontario Teachers' Pension Plan",
+            "Capital Markets Intern, Quantitative Strategies and Research",
+            "Toronto, ON",
+            "https://example.test/job/7168",
+            "Aug 21, 2026",
+        )
+        self.assertNotEqual(first, second)
 
     def test_missing_markers_raise(self) -> None:
         with self.assertRaises(AdapterError):

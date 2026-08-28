@@ -20,8 +20,15 @@ LINK_RE = re.compile(r"\]\(([^)]*)\)")
 SEPARATOR_RE = re.compile(r":?-+:?")
 
 
-def _job_key(company: str, role: str, location: str) -> str:
-    identity = f"{SOURCE_NAME}|{company}|{role}|{location}"
+def _job_key(
+    company: str,
+    role: str,
+    location: str,
+    url: str | None,
+    posted: str,
+) -> str:
+    tail = url if url else posted
+    identity = f"{SOURCE_NAME}|{company}|{role}|{location}|{tail}"
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 
@@ -74,7 +81,7 @@ def parse_readme(markdown: str) -> list[Job]:
         url = links[-1] if links else None
         jobs.append(
             Job(
-                key=_job_key(company, role, location),
+                key=_job_key(company, role, location, url, posted),
                 source=SOURCE_NAME,
                 company=company,
                 role=role,
