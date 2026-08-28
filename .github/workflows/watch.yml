@@ -1,0 +1,37 @@
+name: Watch job postings
+
+on:
+  schedule:
+    - cron: '0 11,23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch and notify
+        run: python watcher.py
+
+      - name: Commit state
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions"
+          git add state/
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+          else
+            git commit -m "Update watcher state"
+            git push
+          fi
