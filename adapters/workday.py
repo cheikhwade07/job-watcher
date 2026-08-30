@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,6 +12,8 @@ from adapters.base import AdapterError, Job
 
 PAGE_SIZE = 20
 MAX_PAGES = 100
+MAX_ATTEMPTS = 3
+RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 SOURCE_PREFIX = "workday"
 
 
@@ -155,14 +158,30 @@ class WorkdayAdapter:
                 "User-Agent": "job-watcher",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise AdapterError(f"{self.name} fetch failed: {exc}") from exc
-        if not isinstance(payload, dict):
-            raise AdapterError(f"{self.name} response is not a JSON object")
-        return payload
+        last_error: Exception | None = None
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    raw_payload = response.read()
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code not in RETRYABLE_STATUS_CODES:
+                    break
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+            else:
+                try:
+                    payload = json.loads(raw_payload.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise AdapterError(f"{self.name} fetch failed: {exc}") from exc
+                if not isinstance(payload, dict):
+                    raise AdapterError(f"{self.name} response is not a JSON object")
+                return payload
+
+            if attempt < MAX_ATTEMPTS - 1:
+                time.sleep(2**attempt)
+
+        raise AdapterError(f"{self.name} fetch failed: {last_error}") from last_error
 
     def fetch(self) -> list[Job]:
         jobs: list[Job] = []

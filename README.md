@@ -1,6 +1,6 @@
 # Job watcher
 
-This repository runs a twice-daily GitHub Actions job that watches the
+This repository runs a scheduled GitHub Actions job that watches the
 marker-bounded internships table in the Canadian Tech Internships 2027
 aggregator plus public ATS feeds for Cohere, Solink, and Ciena. Matching new
 postings are grouped into a GitHub issue with task list checkboxes.
@@ -28,7 +28,9 @@ current feed row as seen without creating an issue. A normal run needs
 - `adapters/workday.py` reads Workday's public CXS postings endpoint.
 - `filters.py` applies independent title and location matches.
 - `notify.py` creates GitHub Issues.
-- `state/` stores seen keys and the last non-zero adapter row count.
+- `state/` stores seen keys, the last non-zero adapter row count, and active
+  adapter outages. A transient Workday failure is retried; a persistently
+  failing source is reported once and does not block healthy sources.
 
 The job key is derived from source, company, role, and location, so edits to
 an aggregator URL do not create duplicate notifications.

@@ -18,6 +18,7 @@ from filters import matches
 ROOT = Path(__file__).resolve().parent
 SEEN_PATH = ROOT / "state" / "seen.json"
 COUNTS_PATH = ROOT / "state" / "counts.json"
+ERRORS_PATH = ROOT / "state" / "errors.json"
 
 
 def _load_json(path: Path) -> dict:
@@ -40,22 +41,52 @@ def _write_json(path: Path, value: dict) -> None:
 
 def _fetch_all(
     adapters: list[Adapter], counts: dict[str, int]
-) -> tuple[list[Job], dict[str, int]]:
+) -> tuple[list[Job], dict[str, int], dict[str, str]]:
     jobs: list[Job] = []
     next_counts = dict(counts)
+    errors: dict[str, str] = {}
     for adapter in adapters:
         try:
             adapter_jobs = adapter.fetch()
         except AdapterError as exc:
-            raise RuntimeError(f"ADAPTER BROKEN: {adapter.name}: {exc}") from exc
+            errors[adapter.name] = f"ADAPTER BROKEN: {adapter.name}: {exc}"
+            continue
 
         previous_count = counts.get(adapter.name, 0)
         if not adapter_jobs and previous_count > 0:
-            raise RuntimeError(f"ADAPTER BROKEN: {adapter.name}")
+            errors[adapter.name] = f"ADAPTER BROKEN: {adapter.name} returned no jobs"
+            continue
         if adapter_jobs:
             next_counts[adapter.name] = len(adapter_jobs)
         jobs.extend(adapter_jobs)
-    return jobs, next_counts
+    return jobs, next_counts, errors
+
+
+def _notify_adapter_errors(
+    current_errors: dict[str, str], previous_errors: dict
+) -> tuple[dict[str, str], bool]:
+    """Alert once per adapter outage and retain the outage state."""
+    next_errors: dict[str, str] = {}
+    notification_failed = False
+    for adapter_name, message in current_errors.items():
+        if adapter_name in previous_errors:
+            next_errors[adapter_name] = message
+            print(message, file=sys.stderr)
+            continue
+
+        try:
+            notify.create_issue(
+                f"ADAPTER BROKEN: {adapter_name}",
+                message,
+                "broken",
+            )
+        except RuntimeError as exc:
+            notification_failed = True
+            print(f"Watcher error: {exc}", file=sys.stderr)
+        else:
+            next_errors[adapter_name] = message
+            print(message, file=sys.stderr)
+    return next_errors, notification_failed
 
 
 def _digest_body(jobs: list[Job]) -> str:
@@ -98,6 +129,7 @@ def main() -> int:
     ]
     seen = _load_json(SEEN_PATH)
     counts = _load_json(COUNTS_PATH)
+    previous_errors = _load_json(ERRORS_PATH)
 
     if not args.dry_run and not args.seed:
         try:
@@ -106,40 +138,21 @@ def main() -> int:
             print(f"Watcher error: {exc}", file=sys.stderr)
             return 1
 
-    try:
-        all_jobs, next_counts = _fetch_all(adapters, counts)
-    except RuntimeError as exc:
-        if args.dry_run:
-            print(f"DRY RUN: {exc}")
-            return 1
-        message = str(exc)
-        if message.startswith("ADAPTER BROKEN:"):
-            adapter_name = message.split(":", 2)[1].strip()
-            try:
-                notify.create_issue(
-                    f"ADAPTER BROKEN: {adapter_name}",
-                    message,
-                    "broken",
-                )
-            except RuntimeError as notify_error:
-                print(f"Watcher error: {notify_error}", file=sys.stderr)
-            else:
-                print(message, file=sys.stderr)
-            return 1
-        print(f"Watcher error: {exc}", file=sys.stderr)
-        return 1
+    all_jobs, next_counts, adapter_errors = _fetch_all(adapters, counts)
 
     filtered = [job for job in all_jobs if matches(job)]
     new_jobs = [job for job in filtered if job.key not in seen]
 
     if args.dry_run:
+        for message in adapter_errors.values():
+            print(f"DRY RUN: {message}")
         print(f"DRY RUN: {len(filtered)} posting(s) passed the filter.")
         print(f"DRY RUN: {len(new_jobs)} new posting(s) would be posted.")
         if new_jobs:
             print(f"Title: {_title(len(new_jobs))}")
             print("Body:")
             print(_digest_body(new_jobs))
-        return 0
+        return 1 if adapter_errors else 0
 
     if args.seed:
         for job in all_jobs:
@@ -148,6 +161,10 @@ def main() -> int:
         _write_json(COUNTS_PATH, next_counts)
         print(f"Seeded {len(all_jobs)} posting(s).")
         return 0
+
+    next_errors, adapter_notification_failed = _notify_adapter_errors(
+        adapter_errors, previous_errors
+    )
 
     if new_jobs:
         try:
@@ -164,8 +181,13 @@ def main() -> int:
 
     _write_json(SEEN_PATH, seen)
     _write_json(COUNTS_PATH, next_counts)
-    print(f"Fetched {len(all_jobs)} posting(s); {len(new_jobs)} new after filtering.")
-    return 0
+    _write_json(ERRORS_PATH, next_errors)
+    print(
+        f"Fetched {len(all_jobs)} posting(s); {len(new_jobs)} new after filtering."
+    )
+    if adapter_errors and not all_jobs:
+        return 1
+    return 1 if adapter_notification_failed else 0
 
 
 if __name__ == "__main__":

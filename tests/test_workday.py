@@ -1,9 +1,10 @@
 import json
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from adapters.base import AdapterError
-from adapters.workday import PAGE_SIZE, WorkdayAdapter, parse_page
+from adapters.workday import MAX_ATTEMPTS, PAGE_SIZE, WorkdayAdapter, parse_page
 
 
 class WorkdayTests(unittest.TestCase):
@@ -92,6 +93,41 @@ class WorkdayTests(unittest.TestCase):
             json.loads(second_request.data),
             {"appliedFacets": {}, "limit": 20, "offset": 20, "searchText": ""},
         )
+
+    def test_retries_transient_http_error(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.test/jobs", 502, "Bad Gateway", {}, None
+        )
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = json.dumps(
+            {"total": 0, "jobPostings": []}
+        ).encode("utf-8")
+        adapter = WorkdayAdapter("ciena", "Careers", "Ciena")
+
+        with patch(
+            "adapters.workday.urllib.request.urlopen",
+            side_effect=[error, response],
+        ) as urlopen, patch("adapters.workday.time.sleep") as sleep:
+            self.assertEqual(adapter._fetch_page(0), {"total": 0, "jobPostings": []})
+
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    def test_persistent_http_error_stops_after_retries(self) -> None:
+        error = urllib.error.HTTPError(
+            "https://example.test/jobs", 502, "Bad Gateway", {}, None
+        )
+        adapter = WorkdayAdapter("ciena", "Careers", "Ciena")
+
+        with patch(
+            "adapters.workday.urllib.request.urlopen", side_effect=error
+        ) as urlopen, patch("adapters.workday.time.sleep") as sleep:
+            with self.assertRaises(AdapterError):
+                adapter._fetch_page(0)
+
+        self.assertEqual(urlopen.call_count, MAX_ATTEMPTS)
+        self.assertEqual(sleep.call_count, MAX_ATTEMPTS - 1)
 
     def test_missing_postings_list_raises(self) -> None:
         with self.assertRaises(AdapterError):
