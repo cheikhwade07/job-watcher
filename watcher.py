@@ -9,7 +9,9 @@ from pathlib import Path
 
 import notify
 from adapters.base import Adapter, AdapterError, Job
+from adapters.ashby import AshbyAdapter
 from adapters.gh_aggregator import GitHubAggregatorAdapter
+from adapters.workday import WorkdayAdapter
 from filters import matches
 
 
@@ -88,7 +90,12 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    adapters: list[Adapter] = [GitHubAggregatorAdapter()]
+    adapters: list[Adapter] = [
+        GitHubAggregatorAdapter(),
+        AshbyAdapter("cohere", "Cohere"),
+        AshbyAdapter("solink", "Solink"),
+        WorkdayAdapter("ciena", "Careers", "Ciena"),
+    ]
     seen = _load_json(SEEN_PATH)
     counts = _load_json(COUNTS_PATH)
 
