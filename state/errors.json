@@ -1,3 +1,4 @@
 {
-  "gh_aggregator": "ADAPTER BROKEN: gh_aggregator: gh_aggregator row has 6 columns, expected 5"
+  "gh_aggregator": "ADAPTER BROKEN: gh_aggregator: gh_aggregator row has 6 columns, expected 5",
+  "workday_ciena_Careers": "ADAPTER BROKEN: workday_ciena_Careers: workday_Careers job 19 has no title"
 }
