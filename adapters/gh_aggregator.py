@@ -37,7 +37,10 @@ def _parse_row(line: str) -> list[str] | None:
     if not stripped.startswith("|"):
         return None
 
-    cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+    # Split from the right so an escaped pipe in a company name does not shift
+    # the four remaining, structurally stable columns. The upstream table
+    # currently contains "Intelcom \| Dragonfly" in the company cell.
+    cells = [cell.strip() for cell in stripped.strip("|").rsplit("|", 4)]
     if not any(cells):
         return None
     if all(SEPARATOR_RE.fullmatch(cell) for cell in cells):

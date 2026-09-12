@@ -18,17 +18,11 @@ SOURCE_PREFIX = "workday"
 
 
 def _job_key(board_name: str, job: Job) -> str:
-    identity = "|".join(
-        [
-            SOURCE_PREFIX,
-            board_name,
-            job.company,
-            job.role,
-            job.location,
-            job.url or "",
-            job.posted,
-        ]
-    )
+    # Workday's ``postedOn`` value is relative (for example, "Posted Today")
+    # and changes every day. Prefer the stable posting URL so an unchanged job
+    # is not announced again whenever that display value advances.
+    posting_identity = job.url or "|".join([job.company, job.role, job.location])
+    identity = "|".join([SOURCE_PREFIX, board_name, posting_identity])
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
 
 

@@ -29,6 +29,26 @@ class GitHubAggregatorTests(unittest.TestCase):
     def test_leading_whitespace_before_pipe(self) -> None:
         self.assertEqual(self.jobs[1].role, "Customer Data Management and Analysis Intern")
 
+    def test_escaped_pipe_in_company_name(self) -> None:
+        row = (
+            "| Intelcom \\| Dragonfly | Software Developer Intern | Montreal, QC | "
+            "[Apply](https://example.test/job) | Sep 1, 2026 |"
+        )
+        markdown = (
+            "<!-- BEGIN:INTERNSHIPS_TABLE -->\n"
+            "| Company | Role | Location | Apply | Date Posted |\n"
+            "|---|---|---|---|---|\n"
+            f"{row}\n"
+            "<!-- END:INTERNSHIPS_TABLE -->"
+        )
+
+        jobs = parse_readme(markdown)
+
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].company, "Intelcom \\| Dragonfly")
+        self.assertEqual(jobs[0].role, "Software Developer Intern")
+        self.assertEqual(jobs[0].url, "https://example.test/job")
+
     def test_url_disambiguates_same_role_and_location(self) -> None:
         first = _job_key(
             "Ontario Teachers' Pension Plan",

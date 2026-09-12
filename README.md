@@ -32,5 +32,6 @@ current feed row as seen without creating an issue. A normal run needs
   adapter outages. A transient Workday failure is retried; a persistently
   failing source is reported once and does not block healthy sources.
 
-The job key is derived from source, company, role, and location, so edits to
-an aggregator URL do not create duplicate notifications.
+Job keys use stable posting identity fields. In particular, Workday keys use
+the posting URL rather than its changing `postedOn` label, so an unchanged job
+is not announced again as "Posted Today" becomes "Posted Yesterday."

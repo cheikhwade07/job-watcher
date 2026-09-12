@@ -34,6 +34,28 @@ class WorkdayTests(unittest.TestCase):
         )
         self.assertTrue(jobs[0].key)
 
+    def test_relative_posted_date_does_not_change_job_key(self) -> None:
+        item = {
+            "title": "Software Developer Intern",
+            "locationsText": "Ottawa",
+            "externalPath": "/job/Ottawa/Software-Developer-Intern_R123",
+        }
+
+        today = parse_page(
+            {"jobPostings": [{**item, "postedOn": "Posted Today"}]},
+            "Careers",
+            "Ciena",
+            "https://ciena.wd5.myworkdayjobs.com/en-US/Careers",
+        )
+        tomorrow = parse_page(
+            {"jobPostings": [{**item, "postedOn": "Posted Yesterday"}]},
+            "Careers",
+            "Ciena",
+            "https://ciena.wd5.myworkdayjobs.com/en-US/Careers",
+        )
+
+        self.assertEqual(today[0].key, tomorrow[0].key)
+
     def test_endpoint_and_page_size(self) -> None:
         adapter = WorkdayAdapter("ciena", "Careers", "Ciena")
         self.assertEqual(
